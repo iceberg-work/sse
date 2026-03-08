@@ -40,6 +40,8 @@ cd sse
 nimble install
 ```
 
+**Note**: The package is installed as `server_sent_events`, but you import it in your code as `sse` (the module filename).
+
 ### Add to Project
 Add to your `.nimble` file:
 ```nim
