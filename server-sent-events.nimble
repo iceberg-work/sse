@@ -1,7 +1,7 @@
 # Package
 
 name          = "server-sent-events"
-version       = "0.1.0"
+version       = "0.1.1"
 author        = "iceberg-work"
 description   = "A dedicated Server-Sent Events (SSE) library for Nim - framework agnostic, production-ready."
 license       = "MIT"
