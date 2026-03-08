@@ -1,0 +1,37 @@
+# Nim compiled files
+*.exe
+*.dll
+*.so
+*.dylib
+*.a
+*.lib
+*.o
+*.obj
+*.bin
+
+# Nim cache directories
+nimcache/
+.nimble/
+
+# Nim documentation generated files
+docs/*.idx
+docs/*.html
+!docs/sse.html
+
+# Backup files
+*.bak
+*~
+*.swp
+*.swo
+
+# OS specific files
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# IDE files
+.vscode/
+.idea/
+*.iml
+*.sublime-project
+*.sublime-workspace
