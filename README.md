@@ -30,7 +30,7 @@ Server-Sent Events are perfect for:
 
 ### From Nimble (Recommended)
 ```bash
-nimble install server-sent-events
+nimble install server_sent_events
 ```
 
 ### From Source
@@ -43,7 +43,7 @@ nimble install
 ### Add to Project
 Add to your `.nimble` file:
 ```nim
-requires "server-sent-events >= 0.1.0"
+requires "server_sent_events >= 0.1.2"
 ```
 
 ## 🚀 Quick Start
