@@ -45,7 +45,7 @@ nimble install
 ### Add to Project
 Add to your `.nimble` file:
 ```nim
-requires "server_sent_events >= 0.1.2"
+requires "server_sent_events >= 0.2.0"
 ```
 
 ## 🚀 Quick Start

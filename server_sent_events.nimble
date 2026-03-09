@@ -1,6 +1,6 @@
 # Package
 
-version       = "0.1.4"
+version       = "0.2.0"
 author        = "iceberg-work"
 description   = "A dedicated Server-Sent Events (SSE) library for Nim - framework agnostic, production-ready."
 license       = "MIT"

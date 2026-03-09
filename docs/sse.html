@@ -364,10 +364,9 @@
 <ul class="simple"><li>Multiline data is split into multiple <tt class="docutils literal"><span class="pre"><span class="Identifier">data</span><span class="Punctuation">:</span></span></tt> fields</li>
 <li>Empty fields are omitted</li>
 <li>CRLF and CR are normalized to LF</li>
-<li>Newlines in event and id fields are removed (prevents field injection) including \r, \n, \u2028 (LINE SEPARATOR), \u2029 (PARAGRAPH SEPARATOR)</li>
 </ul>
 <p>Security Note:</p>
-<ul class="simple"><li>Event and ID fields are sanitized to prevent field injection attacks</li>
+<ul class="simple"><li>Event and ID fields are already sanitized by initSSEvent()</li>
 <li>Data fields preserve newlines (as per SSE spec) but be cautious when embedding JSON or other structured data that may contain colon-prefixed text</li>
 </ul>
 <p>Example:</p>
@@ -475,8 +474,12 @@
 <p>Parameters:</p>
 <ul class="simple"><li><tt class="docutils literal"><span class="pre"><span class="Identifier">data</span></span></tt>: The event data (required)</li>
 <li><tt class="docutils literal"><span class="pre"><span class="Identifier">event</span></span></tt>: The event type (optional)</li>
-<li><tt class="docutils literal"><span class="pre"><span class="Identifier">id</span></span></tt>: The event ID (optional)</li>
+<li><tt class="docutils literal"><span class="pre"><span class="Identifier">id</span></span></tt>: The event ID (optional) - must not contain NULL characters</li>
 <li><tt class="docutils literal"><span class="pre"><span class="Identifier">retry</span></span></tt>: Reconnection time in milliseconds (optional, -1 = not set)</li>
+</ul>
+<p>Security Note:</p>
+<ul class="simple"><li>Event and ID fields are sanitized during initialization to prevent injection attacks</li>
+<li>ID field must not contain NULL characters (will be removed)</li>
 </ul>
 <p>Example:</p>
 <p><pre class="listing"><span class="Keyword">let</span> <span class="Identifier">evt</span> <span class="Operator">=</span> <span class="Identifier">initSSEvent</span><span class="Punctuation">(</span><span class="StringLit">&quot;hello&quot;</span><span class="Punctuation">,</span> <span class="StringLit">&quot;message&quot;</span><span class="Punctuation">,</span> <span class="StringLit">&quot;123&quot;</span><span class="Punctuation">,</span> <span class="DecNumber">5000</span><span class="Punctuation">)</span></pre></p>
@@ -583,12 +586,13 @@
     <span><span class="Other pragmadots">...</span></span><span class="pragmawrap"><span class="Identifier">raises</span><span class="Other">:</span> <span class="Other">[</span><span class="Other">]</span><span class="Other">,</span> <span class="Identifier">tags</span><span class="Other">:</span> <span class="Other">[</span><span class="Other">]</span><span class="Other">,</span> <span class="Identifier">forbids</span><span class="Other">:</span> <span class="Other">[</span><span class="Other">]</span></span>.}</pre></dt>
   <dd>
     
-    <p>Validates SSE syntax.</p>
+    <p>Validates SSE syntax with stricter checks.</p>
 <p>Validates:</p>
 <ul class="simple"><li>Valid field names (event, data, id, retry)</li>
 <li>Valid retry values (must be non-negative integer)</li>
+<li>Rejects lines without colons (except empty lines and comments)</li>
 </ul>
-<p>Note: This function is functionally equivalent to validateSyntax().</p>
+<p>Note: This is the same as validateSyntax(), kept for backward compatibility.</p>
 <p>Example:</p>
 <p><pre class="listing"><span class="Keyword">let</span> <span class="Punctuation">(</span><span class="Identifier">valid</span><span class="Punctuation">,</span> <span class="Identifier">err</span><span class="Punctuation">)</span> <span class="Operator">=</span> <span class="Identifier">validateStrict</span><span class="Punctuation">(</span><span class="StringLit">&quot;data: hello</span><span class="EscapeSequence">\n</span><span class="StringLit">retry: abc</span><span class="EscapeSequence">\n</span><span class="EscapeSequence">\n</span><span class="StringLit">&quot;</span><span class="Punctuation">)</span>
 <span class="Identifier">echo</span> <span class="Identifier">valid</span>  <span class="Comment"># false (invalid retry value)</span></pre></p>
@@ -634,7 +638,7 @@
       <div class="twelve-columns footer">
         <span class="nim-sprite"></span>
         <br>
-        <small style="color: var(--hint);">Made with Nim. Generated: 2026-03-08 16:22:36 UTC</small>
+        <small style="color: var(--hint);">Made with Nim. Generated: 2026-03-09 09:09:17 UTC</small>
       </div>
     </div>
   </div>

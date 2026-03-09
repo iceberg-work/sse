@@ -417,5 +417,5 @@ If you discover a security vulnerability, please report it responsibly:
 
 ---
 
-**Last Updated**: 2026-03-08  
-**Version**: 0.1.0
+**Last Updated**: 2026-03-09  
+**Version**: 0.2.0

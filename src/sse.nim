@@ -109,14 +109,40 @@ type
     ## Exception raised when SSE parsing encounters an error.
     ## Currently raised when buffer size exceeds maxBufferSize.
 
+proc safeParseInt(s: string): tuple[ok: bool, val: int] =
+  try:
+    (true, parseInt(s))
+  except ValueError:
+    (false, 0)
+
+proc sanitizeField(s: string): string =
+  ## Removes all newline characters from a field value to prevent field injection.
+  ## 
+  ## Handles:
+  ## - \\r\\n (CRLF)
+  ## - \\r (CR)
+  ## - \\n (LF)
+  ## - \\u2028 (LINE SEPARATOR)
+  ## - \\u2029 (PARAGRAPH SEPARATOR)
+  ## - \\0 (NULL character)
+  ## 
+  ## This is used for event and id fields to prevent injection attacks.
+  result = s.replace("\r\n", "").replace("\r", "").replace("\n", "")
+  result = result.replace("\u2028", "").replace("\u2029", "")
+  result = result.replace("\0", "")
+
 proc initSSEvent*(data: string, event = "", id = "", retry = -1): SSEvent =
   ## Creates a new SSEvent with the specified fields.
   ## 
   ## Parameters:
   ## * `data`: The event data (required)
   ## * `event`: The event type (optional)
-  ## * `id`: The event ID (optional)
+  ## * `id`: The event ID (optional) - must not contain NULL characters
   ## * `retry`: Reconnection time in milliseconds (optional, -1 = not set)
+  ## 
+  ## Security Note:
+  ## - Event and ID fields are sanitized during initialization to prevent injection attacks
+  ## - ID field must not contain NULL characters (will be removed)
   ## 
   ## Example:
   ## ```nim
@@ -125,7 +151,9 @@ proc initSSEvent*(data: string, event = "", id = "", retry = -1): SSEvent =
   ## 
   ## See also:
   ## * [examples/ssevent_examples.nim](https://github.com/iceberg-work/sse/tree/main/examples/ssevent_examples.nim) - Initialization examples
-  SSEvent(data: data, event: event, id: id, retry: retry)
+  let safeId = sanitizeField(id)
+  let safeEvent = sanitizeField(event)
+  SSEvent(data: data, event: safeEvent, id: safeId, retry: retry)
 
 proc initSSEParser*(maxBufferSize = DefaultMaxBufferSize): SSEParser =
   ## Creates a new SSE parser with the specified maximum buffer size.
@@ -143,26 +171,6 @@ proc initSSEParser*(maxBufferSize = DefaultMaxBufferSize): SSEParser =
   let safeMaxSize = if maxBufferSize <= 0: DefaultMaxBufferSize else: maxBufferSize
   SSEParser(buffer: "", maxBufferSize: safeMaxSize, lastEventId: "")
 
-proc safeParseInt(s: string): tuple[ok: bool, val: int] =
-  try:
-    (true, parseInt(s))
-  except ValueError:
-    (false, 0)
-
-proc sanitizeField(s: string): string =
-  ## Removes all newline characters from a field value to prevent field injection.
-  ## 
-  ## Handles:
-  ## - \\r\\n (CRLF)
-  ## - \\r (CR)
-  ## - \\n (LF)
-  ## - \\u2028 (LINE SEPARATOR)
-  ## - \\u2029 (PARAGRAPH SEPARATOR)
-  ## 
-  ## This is used for event and id fields to prevent injection attacks.
-  result = s.replace("\r\n", "").replace("\r", "").replace("\n", "")
-  result = result.replace("\u2028", "").replace("\u2029", "")
-
 proc format*(evt: SSEvent): string =
   ## Formats an SSEvent as a valid SSE message string.
   ## 
@@ -170,11 +178,9 @@ proc format*(evt: SSEvent): string =
   ## - Multiline data is split into multiple `data:` fields
   ## - Empty fields are omitted
   ## - CRLF and CR are normalized to LF
-  ## - Newlines in event and id fields are removed (prevents field injection)
-  ##   including \\r, \\n, \\u2028 (LINE SEPARATOR), \\u2029 (PARAGRAPH SEPARATOR)
   ## 
   ## Security Note:
-  ## - Event and ID fields are sanitized to prevent field injection attacks
+  ## - Event and ID fields are already sanitized by initSSEvent()
   ## - Data fields preserve newlines (as per SSE spec) but be cautious when
   ##   embedding JSON or other structured data that may contain colon-prefixed text
   ## 
@@ -191,20 +197,39 @@ proc format*(evt: SSEvent): string =
   ## 
   ## See also:
   ## * [examples/ssevent_examples.nim](https://github.com/iceberg-work/sse/tree/main/examples/ssevent_examples.nim) - Format examples
-  if evt.event.len > 0:
-    let safeEvent = sanitizeField(evt.event)
-    result.add("event: " & safeEvent & "\n")
+  result.setLen(0)
   
-  let lines = evt.data.splitLines()
-  for line in lines:
-    result.add("data: " & line & "\n")
+  if evt.event.len > 0:
+    result.add "event: "
+    result.add evt.event
+    result.add "\n"
+  
+  if evt.data.len == 0:
+    result.add "data: \n"
+  else:
+    var i = 0
+    while i < evt.data.len:
+      var lineEnd = i
+      while lineEnd < evt.data.len and evt.data[lineEnd] != '\n' and evt.data[lineEnd] != '\r':
+        inc lineEnd
+      result.add "data: "
+      result.add evt.data.substr(i, lineEnd - 1)
+      result.add "\n"
+      i = lineEnd
+      if i < evt.data.len and evt.data[i] == '\r':
+        inc i
+      if i < evt.data.len and evt.data[i] == '\n':
+        inc i
   
   if evt.id.len > 0:
-    let safeId = sanitizeField(evt.id)
-    result.add("id: " & safeId & "\n")
+    result.add "id: "
+    result.add evt.id
+    result.add "\n"
   if evt.retry >= 0:
-    result.add("retry: " & $evt.retry & "\n")
-  result.add("\n")
+    result.add "retry: "
+    result.add $evt.retry
+    result.add "\n"
+  result.add "\n"
 
 proc format*(events: seq[SSEvent]): string =
   ## Formats a sequence of SSEvents as a concatenated SSE stream.
@@ -274,7 +299,7 @@ proc parse*(raw: string, maxSize = DefaultMaxParseSize): seq[SSEvent] =
   ## * [examples/ssevent_examples.nim](https://github.com/iceberg-work/sse/tree/main/examples/ssevent_examples.nim) - Parse examples
   let safeMaxSize = if maxSize <= 0: DefaultMaxParseSize else: maxSize
   if raw.len > safeMaxSize:
-    raise newException(SSEError, "Input size exceeds maximum: " & $safeMaxSize & " bytes (actual: " & $raw.len & ")")
+    raise newException(SSEError, "Input size exceeds maximum limit")
   
   var currentEvent = SSEvent()
   var dataLines: seq[string] = @[]
@@ -300,13 +325,13 @@ proc parse*(raw: string, maxSize = DefaultMaxParseSize): seq[SSEvent] =
       
       case field
       of "event":
-        currentEvent.event = value
+        currentEvent.event = sanitizeField(value)
         hasContent = true
       of "data":
         dataLines.add(value)
         hasContent = true
       of "id":
-        currentEvent.id = value
+        currentEvent.id = sanitizeField(value)
         hasContent = true
       of "retry":
         hasContent = true
@@ -329,23 +354,16 @@ proc findDoubleNewlinePos(s: string): tuple[pos: int, len: int] =
   ## Returns (position, separator_length) or (-1, 0) if not found
   var i = 0
   while i < s.len:
-    if i + 1 < s.len:
-      let c1 = s[i]
-      let c2 = s[i + 1]
-      
-      if c1 == '\n' and c2 == '\n':
-        return (i, 2)
-      elif c1 == '\r' and c2 == '\n':
-        if i + 2 < s.len and s[i + 2] == '\r' and i + 3 < s.len and s[i + 3] == '\n':
-          return (i, 4)
-        elif i + 2 < s.len and s[i + 2] == '\n':
-          return (i, 3)
-      elif c1 == '\r' and c2 == '\r':
-        return (i, 2)
-      elif c1 == '\n' and c2 == '\r':
-        if i + 2 < s.len and s[i + 2] == '\n':
-          return (i, 3)
-    inc i
+    let c = s[i]
+    if c == '\n' or c == '\r':
+      var j = i + 1
+      while j < s.len and (s[j] == '\n' or s[j] == '\r'):
+        inc j
+      if j - i >= 2:
+        return (i, j - i)
+      i = j
+    else:
+      inc i
   return (-1, 0)
 
 proc feed*(parser: var SSEParser, data: string): seq[SSEvent] =
@@ -375,7 +393,7 @@ proc feed*(parser: var SSEParser, data: string): seq[SSEvent] =
   if parser.buffer.len + data.len > parser.maxBufferSize:
     parser.buffer = ""
     parser.lastEventId = ""
-    raise newException(SSEError, "Buffer size exceeded maximum: " & $parser.maxBufferSize)
+    raise newException(SSEError, "Buffer size exceeded maximum limit")
   
   parser.buffer.add(data)
   result = @[]
@@ -388,10 +406,10 @@ proc feed*(parser: var SSEParser, data: string): seq[SSEvent] =
     let chunk = parser.buffer[0..<dblNewline]
     let remainingStart = dblNewline + sepLen
     
-    if remainingStart >= parser.buffer.len:
-      parser.buffer = ""
-    else:
-      parser.buffer = parser.buffer[remainingStart..^1]
+    var newBuffer = ""
+    if remainingStart < parser.buffer.len:
+      newBuffer = parser.buffer[remainingStart..^1]
+    parser.buffer = newBuffer
     
     let normalizedChunk = normalizeNewlines(chunk)
     let events = parse(normalizedChunk & "\n\n", maxSize = parser.maxBufferSize)
@@ -465,13 +483,14 @@ proc validateSyntax*(raw: string): tuple[valid: bool, error: string] =
   return (true, "")
 
 proc validateStrict*(raw: string): tuple[valid: bool, error: string] =
-  ## Validates SSE syntax.
+  ## Validates SSE syntax with stricter checks.
   ## 
   ## Validates:
   ## - Valid field names (event, data, id, retry)
   ## - Valid retry values (must be non-negative integer)
+  ## - Rejects lines without colons (except empty lines and comments)
   ## 
-  ## Note: This function is functionally equivalent to validateSyntax().
+  ## Note: This is the same as validateSyntax(), kept for backward compatibility.
   ## 
   ## Example:
   ## ```nim
@@ -481,29 +500,7 @@ proc validateStrict*(raw: string): tuple[valid: bool, error: string] =
   ## 
   ## See also:
   ## * [examples/validation_examples.nim](https://github.com/iceberg-work/sse/tree/main/examples/validation_examples.nim) - Strict validation examples
-  for line in raw.splitLines():
-    if line.len == 0 or line[0] == ':':
-      continue
-    elif ':' in line:
-      let colonPos = line.find(':')
-      let field = line[0..<colonPos]
-      
-      case field
-      of "data", "event", "id":
-        discard
-      of "retry":
-        var value = if colonPos + 1 < line.len: line[colonPos+1..^1] else: ""
-        if value.len > 0 and value[0] == ' ':
-          value = value[1..^1]
-        let (ok, val) = safeParseInt(value)
-        if not ok:
-          return (false, "Invalid retry value: " & value)
-        if val < 0:
-          return (false, "Negative retry value is not allowed: " & value)
-      else:
-        return (false, "Unknown field: " & field)
-  
-  return (true, "")
+  validateSyntax(raw)
 
 proc validate*(raw: string): tuple[valid: bool, error: string] =
   ## Alias for validateSyntax.
